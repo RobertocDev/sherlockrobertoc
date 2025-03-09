@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import subprocess
 
 app = Flask(__name__)
 
@@ -10,18 +11,29 @@ def sherlock():
     if not username:
         return jsonify({"error": "Por favor, forneça um nome de usuário."}), 400
 
-    # Executar o Sherlock
+    # Caminho do script Sherlock
+    sherlock_script = 'sherlock.py'
+
+    # Verificar se o script Sherlock existe
+    if not os.path.exists(sherlock_script):
+        return jsonify({"error": "O script Sherlock não foi encontrado no servidor."}), 500
+
     try:
-        # Comando para rodar o Sherlock e salvar os resultados em um arquivo de texto
-        command = f"py sherlock.py {username} --output {username}.txt"
-        os.system(command)
+        # Executar o Sherlock e salvar os resultados em um arquivo de texto
+        command = ['python', sherlock_script, username, '--output', f'{username}.txt']
+        result = subprocess.run(command, capture_output=True, text=True)
+
+        # Verificar se o comando foi bem-sucedido
+        if result.returncode != 0:
+            return jsonify({"error": f"Erro ao executar o Sherlock: {result.stderr}"}), 500
 
         # Verificar se o arquivo de texto foi criado
-        if not os.path.exists(f"{username}.txt"):
+        output_file = f'{username}.txt'
+        if not os.path.exists(output_file):
             return jsonify({"error": f"Nenhum resultado encontrado para o usuário '{username}'."}), 404
 
         # Ler o arquivo de texto gerado
-        with open(f"{username}.txt", "r", encoding="utf-8") as file:
+        with open(output_file, "r", encoding="utf-8") as file:
             content = file.read()
 
             # Verificar se o arquivo está vazio
@@ -29,17 +41,13 @@ def sherlock():
                 return jsonify({"error": f"Nenhum resultado encontrado para o usuário '{username}'."}), 404
 
             # Processar o conteúdo do arquivo de texto
-            results = []
-            for line in content.splitlines():
-                if line.strip():  # Ignorar linhas vazias
-                    results.append({"url": line.strip()})
+            results = [{"url": line.strip()} for line in content.splitlines() if line.strip()]
 
         # Retornar os resultados
         return jsonify(results)
 
-    except Exception as e:  # Adicionei os dois pontos aqui
+    except Exception as e:
         return jsonify({"error": f"Erro ao executar o Sherlock: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    # Rodar a API na porta 5000
     app.run(host='0.0.0.0', port=5000)
